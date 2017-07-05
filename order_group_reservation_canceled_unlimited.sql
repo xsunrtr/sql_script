@@ -1,4 +1,4 @@
-
+/*Create order_group_reservation table for canceled unlimited reservations*/
 drop table if exists rtrbi.fulfillment_unlimited_last_status_temp;
 create table rtrbi.fulfillment_unlimited_last_status_temp as
 select
