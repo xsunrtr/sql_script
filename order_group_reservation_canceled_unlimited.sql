@@ -13,8 +13,7 @@ select
 from etl.fulfillment as f
 inner join etl.fulfillment_seq as fs
     on f.id = fs.fulfillment_id and
-    f.seq between fs.seq - 1 and fs.seq
-where f.child_sku is null;
+    f.seq between fs.seq - 1 and fs.seq;
 
 
 drop table if exists etl.ups_ground_shipping_zone_unlimited_07094_temp;
