@@ -88,13 +88,7 @@ select ogr.uid
 ,flse.last2nd_fulfillment_status
 ,flse.last2nd_fulfillment_updated_on
 ,iull.unit_id
-,count(
-  case
-    when p.type = 'D' and flse.child_sku is not null
-    --and flse.last_fulfillment_status != 'ITEM_LIMBO'
-      then ogr.reservation_booking_id
-    else null end
-  ) over (partition by ogr.group_id) as extras_in_group
+,ogr.dresses_in_group
 ,iull.status as unit_current_status
 ,iull.action as unit_last_action
 ,iull.location_station as unit_current_location
