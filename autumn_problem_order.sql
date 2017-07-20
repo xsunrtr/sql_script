@@ -60,16 +60,15 @@ order by 1,2,3,4,5,6
 
 ----3. View for Autumn - Order Issues/Problem Orders/Unlimited PO/Unlimited PO1(unlimited groups/bookings PO summary table) -------------------------------
 create or replace view rpt.unlimited_group_rb_po_table as
-select distinct ogrw.group_id
-, ogrw.reservation_booking_id
+select distinct 
+case when po_category is not null or ogrw.cancel_flag=0 then ogrw.group_id else null end as group_id 
+, case when po_category is not null or ogrw.cancel_flag=0 then ogrw.reservation_booking_id else null end as reservation_booking_id
 , ogrw.rental_begin_date
 , ogrw.merchandise_category
 , ogrw.product_type as type
 , pmi.sub_type
-,ogrw.cancel_flag
 , case when ogrw.child_sku is null then 'ParentSku' else 'extra' end as ParentSku_extra
 , case when po_category is not null then ogrw.group_id else null end as PO_group_id
-, case when cancel_flag = 1 then ogrw.reservation_booking_id else null end as Canceled_Reservations_booking_id
 , case when ups.po_category is not null
 	then ogrw.reservation_booking_id else null end as PO_Reservation_booking_id
 , case when ups.po_category is not null and ogrw.child_sku is not null
