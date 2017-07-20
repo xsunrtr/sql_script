@@ -13,11 +13,11 @@ select distinct apr.group_id
 , apr."type"
 , apr.sub_type
 , case when apr.po_category is not null then apr.group_id else null end as PO_group_id
-, case when apr.po_category is not null and ogre.child_sku is not null
+, case when ogre.last_fulfillment_status = 'ITEM_LIMBO' 
 	then apr.group_id else null end as Extras_PO_group_id
 , case when apr.po_category is not null 
 	then apr.reservation_booking_id else null end as PO_Reservations_booking_id
-, case when apr.po_category is not null and ogre.child_sku is not null
+, case when ogre.last_fulfillment_status = 'ITEM_LIMBO' 
 	then apr.reservation_booking_id else null end as Extras_PO_Reservations_booking_id
 from rtrbi.autumn_report_raw_data as apr
 inner join etl.products_master_iid as pmi on apr.sku = pmi.sku
