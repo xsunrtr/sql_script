@@ -6,6 +6,7 @@
 create or replace view rpt.classic_group_rb_po_table as
 select distinct apr.group_id
 , apr.reservation_booking_id
+, apr.order_type
 , case when ogre.child_sku is not null then apr.group_id else null end as extra_group_id
 , case when ogre.child_sku is not null then apr.reservation_booking_id else null end as extra_reservation_booking_id
 , apr.rental_begin_date
@@ -21,11 +22,12 @@ select distinct apr.group_id
 	then apr.reservation_booking_id else null end as Extras_PO_Reservations_booking_id
 from rtrbi.autumn_report_raw_data as apr
 inner join etl.products_master_iid as pmi on apr.sku = pmi.sku
-and apr.order_type in ('CLASSIC','CLASSIC_POSH','STORE_PICKUP','STORE_PICKUP_WEB')
-and apr.rental_begin_date > current_date - interval '8 months'
-and pmi.special_type <>'X'
 left join analytics.order_group_reservation_withExtras as ogre
 on ogre.reservation_booking_id = apr.reservation_booking_id
+where apr.order_type in ('CLASSIC','CLASSIC_POSH','STORE_PICKUP','STORE_PICKUP_WEB')
+  and apr.rental_begin_date > current_date - interval '8 months'
+  and pmi.special_type <>'X'
+  and apr.mail not like '%renttherunway.com'
 ;
 
 
