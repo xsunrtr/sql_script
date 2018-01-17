@@ -1,0 +1,124 @@
+/* Leakage Query - Finance
+Fixed two things,
+1. Remove duplicates (there were duplicate groups with different transaction_id but same total amount)
+2. Filled the lag caused by time zone and daylight.
+ * */
+SELECT	distinct	
+     fli.id AS fli_id				
+    ,fli.order_id --AS "Order ID"		
+    ,fli.group_id		
+    ,fli.tax_rate		
+    ,fli.subtotal::NUMERIC(9,2)		
+    ,fli.tax::NUMERIC(9,2)		
+    ,fli.total::NUMERIC(9,2)		
+    ,fli.type		
+    ,fli.direction		
+    ,fli.status		
+    ,((fli.created_at at TIMEZONE  'America/Chicago') at TIMEZONE 'UTC')  AS "Initiated At"		
+    ,((fli.updated_at at TIMEZONE  'America/Chicago') at TIMEZONE 'UTC')  AS "Updated At"	
+    ,z.order_date + INTERVAL '7 hour' AS "Order Date"		
+    ,z.rental_begin_date as "Rent Begin Date"		
+    ,z.order_type  --You probably don't need this		
+    ,CASE WHEN z.unlimited_membership = 1 AND z.pro_membership = 1 THEN 'Both'		
+        WHEN z.unlimited_membership = 1 THEN 'Unlimited'		
+        WHEN z.pro_membership = 1 THEN 'Pro'		
+        WHEN z.stylepass_membership = 1 THEN 'StylePass'		
+        ELSE NULL		
+        END AS membership_group		
+    ,CASE WHEN IFNULL(s.name,'') = '' THEN 'Ecommerce' ELSE s.name END AS "Showroom"	  	
+    FROM etl.financial_line_item AS fli		
+    LEFT OUTER JOIN (		
+        SELECT		
+             io.order_id AS order_id		
+            ,ig.group_id AS group_id		
+            ,MIN(io.created_at) AS order_date		
+            ,MAX(rb.sku) AS sku		
+            ,MAX(rbd.rental_begin_date)::DATE AS rental_begin_date		
+            ,MAX(order_type) AS order_Type  --You probably don't need this		
+            ,MAX(CASE WHEN sku IN ('XX8_ONE SIZE','XX8_One Size') THEN 1 ELSE 0 END) AS pro_membership		
+            ,MAX(CASE WHEN sku IN ('XX14_One Size','XX13_One Size','XX44_One Size','XX45_One Size','XX46_One Size','XX14_ONE SIZE','XX13_ONE SIZE','XX44_ONE SIZE','XX45_ONE SIZE','XX46_ONE SIZE','XX77_ONE SIZE','XX77_One Size') THEN 1 ELSE 0 END) AS unlimited_membership		
+            ,MAX(CASE WHEN sku IN ('XX55_One Size','XX55_ONE SIZE') THEN 1 ELSE 0 END) as stylepass_membership		
+        FROM etl.invoice_order AS io		
+        INNER JOIN etl.invoice_group AS ig		
+            on ig.invoice_order_id = io.id		
+        LEFT OUTER JOIN etl.invoice_booking AS ib		
+            on ib.invoice_group_id = ig.id		
+        INNER JOIN etl.reservation_booking AS rb		
+            on ib.booking_id = rb.id		
+        INNER JOIN etl.reservation_booking_detail AS rbd		
+            on rb.id = rbd.reservation_booking_id		
+        where ig.group_id != -1		
+        GROUP BY ig.group_id, io.order_id		
+        ) AS z		
+        ON z.group_id = fli.group_id		
+    LEFT JOIN 		
+    		(SELECT DISTINCT order_id, showroom_id
+    		FROM etl.showroom_order
+    		WHERE deleted=0) AS so ON so.order_id=fli.order_id
+    LEFT JOIN etl.showroom AS s ON s.id = so.showroom_id		
+WHERE 		
+		((fli.updated_at at TIMEZONE  'America/Chicago') at TIMEZONE 'UTC') BETWEEN DATE('2017-01-31') AND DATE('2017-03-31')
+    AND fli.status = 'CONFIRMED'
+    order by 1,2,3,4,5,6;
+
+    
+   /* Leakage by reason code - calendar month */
+
+select  d.calendar_year
+    , d.calendar_month
+    , annotation_type_summary
+	, -sum(rf.fli_total) as fli_total
+from (
+    select distinct ots.transaction_id
+    ,ots.order_id
+    ,ots.group_id
+    , annotation_type_summary
+    , annotation_group_summary
+    , fli_total
+    , fli_tax_total
+    , fli_pretax_total
+    , min(((fli.updated_at at TIMEZONE  'America/Chicago') at TIMEZONE 'UTC')::DATE) as updated_at
+     from rtrbi.ow_transaction_summary as ots
+     inner join etl.financial_line_item AS fli
+    on ots.group_id = fli.group_id
+     WHERE 		
+		((fli.updated_at at TIMEZONE  'America/Chicago') at TIMEZONE 'UTC') BETWEEN DATE('2017-01-01') AND DATE('2017-05-31')
+    AND fli.status = 'CONFIRMED'
+    and fli.direction = 'OUT'
+    and ots.fli_total <0
+    group by 1,2,3,4,5,6,7,8
+    order by ots.order_id, ots.group_id) rf
+ inner join rtrbi.dates d
+ on rf.updated_at = d.asofdate
+ group by 1,2,3;
+ 
+ 
+    /* Leakage by reason code - fiscal month */
+
+select  d.fiscal_year
+    , d.fiscal_month
+    , annotation_type_summary
+	, -sum(rf.fli_total) as fli_total
+from (
+    select distinct ots.transaction_id
+    ,ots.order_id
+    ,ots.group_id
+    , annotation_type_summary
+    , annotation_group_summary
+    , fli_total
+    , fli_tax_total
+    , fli_pretax_total
+    , min(((fli.updated_at at TIMEZONE  'America/Chicago') at TIMEZONE 'UTC')::DATE) as updated_at
+     from rtrbi.ow_transaction_summary as ots
+     inner join etl.financial_line_item AS fli
+    on ots.group_id = fli.group_id
+     WHERE 		
+		((fli.updated_at at TIMEZONE  'America/Chicago') at TIMEZONE 'UTC') BETWEEN DATE('2017-01-01') AND DATE('2017-05-31')
+    AND fli.status = 'CONFIRMED'
+    and fli.direction = 'OUT'
+    and ots.fli_total <0
+    group by 1,2,3,4,5,6,7,8
+    order by ots.order_id, ots.group_id) rf
+ inner join rtrbi.dates d
+ on rf.updated_at = d.asofdate
+ group by 1,2,3;
