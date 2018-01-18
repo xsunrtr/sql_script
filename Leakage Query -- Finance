@@ -56,8 +56,9 @@ SELECT	distinct
     		FROM etl.showroom_order
     		WHERE deleted=0) AS so ON so.order_id=fli.order_id
     LEFT JOIN etl.showroom AS s ON s.id = so.showroom_id		
-WHERE 		
-		((fli.updated_at at TIMEZONE  'America/Chicago') at TIMEZONE 'UTC') BETWEEN DATE('2017-01-31') AND DATE('2017-03-31')
+WHERE /*set conditions for transaction date and rental begin date*/		
+((fli.updated_at at TIMEZONE  'America/Chicago') at TIMEZONE 'UTC') BETWEEN DATE('2017-01-29') AND DATE('2017-02-25')
+  and rental_begin_date BETWEEN DATE('2015-01-01') AND DATE('2017-02-25')
     AND fli.status = 'CONFIRMED'
     order by 1,2,3,4,5,6;
 
@@ -77,16 +78,24 @@ from (
     , fli_total
     , fli_tax_total
     , fli_pretax_total
+    , ot.rental_begin_date 
     , min(((fli.updated_at at TIMEZONE  'America/Chicago') at TIMEZONE 'UTC')::DATE) as updated_at
      from rtrbi.ow_transaction_summary as ots
      inner join etl.financial_line_item AS fli
     on ots.group_id = fli.group_id
-     WHERE 		
-		((fli.updated_at at TIMEZONE  'America/Chicago') at TIMEZONE 'UTC') BETWEEN DATE('2017-01-01') AND DATE('2017-05-31')
+     LEFT JOIN (
+                SELECT order_id
+                    ,MIN(rental_begin_date) AS rental_begin_date --gets the minimum rental begin date of the order
+                FROM rtrbi.v_ot_orderdata
+                GROUP BY 1
+                ) ot ON ots.order_id = ot.order_id
+     WHERE /*set conditions for transaction date and rental begin date*/		
+    ((fli.updated_at at TIMEZONE  'America/Chicago') at TIMEZONE 'UTC') BETWEEN DATE('2017-01-01') AND DATE('2017-05-31')
+    AND ot.rental_begin_date BETWEEN DATE('2015-01-01') AND DATE('2017-05-31')
     AND fli.status = 'CONFIRMED'
     and fli.direction = 'OUT'
     and ots.fli_total <0
-    group by 1,2,3,4,5,6,7,8
+    group by 1,2,3,4,5,6,7,8,9
     order by ots.order_id, ots.group_id) rf
  inner join rtrbi.dates d
  on rf.updated_at = d.asofdate
@@ -108,16 +117,24 @@ from (
     , fli_total
     , fli_tax_total
     , fli_pretax_total
+    , ot.rental_begin_date
     , min(((fli.updated_at at TIMEZONE  'America/Chicago') at TIMEZONE 'UTC')::DATE) as updated_at
      from rtrbi.ow_transaction_summary as ots
      inner join etl.financial_line_item AS fli
     on ots.group_id = fli.group_id
-     WHERE 		
-		((fli.updated_at at TIMEZONE  'America/Chicago') at TIMEZONE 'UTC') BETWEEN DATE('2017-01-01') AND DATE('2017-05-31')
+    LEFT JOIN (
+                SELECT order_id
+                    ,MIN(rental_begin_date) AS rental_begin_date --gets the minimum rental begin date of the order
+                FROM rtrbi.v_ot_orderdata
+                GROUP BY 1
+                ) ot ON ots.order_id = ot.order_id
+    WHERE /*set conditions for transaction date and rental begin date*/		
+    ((fli.updated_at at TIMEZONE  'America/Chicago') at TIMEZONE 'UTC') BETWEEN DATE('2017-01-01') AND DATE('2017-05-31')
+    AND ot.rental_begin_date BETWEEN DATE('2015-01-01') AND DATE('2017-05-31')
     AND fli.status = 'CONFIRMED'
     and fli.direction = 'OUT'
     and ots.fli_total <0
-    group by 1,2,3,4,5,6,7,8
+    group by 1,2,3,4,5,6,7,8,9
     order by ots.order_id, ots.group_id) rf
  inner join rtrbi.dates d
  on rf.updated_at = d.asofdate
