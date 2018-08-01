@@ -1,0 +1,194 @@
+
+/*What % of swaps that happen on a Thursday LPS 
+vs Friday LPS?*/
+create or replace view rpt.v_order_issue_rpl as
+WITH replacement as
+(
+	SELECT  DISTINCT af.order_id
+	, ogr.group_id
+    , ogr.sku as replacement_sku
+    , p.style as replacement_style
+	, af.annotation_target_id
+	, af.detail_value
+	FROM etl.yp_autumn_full as af
+	INNER JOIN rtrbi.order_group_reservation ogr
+	ON af.annotation_target_id = ogr.reservation_booking_id
+  inner join analytics.barcode_sku_style_type p
+on ogr.sku = p.sku
+	where af.annotation_group = 'REPLACEMENT'
+	and af.detail_name = 'reason' )
+SELECT DISTINCT
+ po.order_id
+ ,po.uid
+, po.group_id
+, po.order_datetime_est
+, po.group_created_est
+, po.reservation_booking_id
+, po.reservation_created
+, po.email
+, po.TYPE
+, po.last_possible_begin_date
+, po.rental_begin_date
+, rp.order_id AS order_id_w_rplm
+, rp.detail_value
+, CASE WHEN af.annotation_group = 'RFF' THEN po.order_id END AS fit_order_id
+, CASE WHEN af.annotation_group = 'RFF' THEN po.style END AS fit_style
+, CASE WHEN af.annotation_group = 'RFF' THEN po.group_id END AS fit_group_id
+, CASE WHEN af.annotation_group = 'RFF' THEN po.reservation_booking_id END AS fit_booking_id
+, CASE WHEN af.annotation_group = 'RFF' AND rp.detail_value = 'FIT' THEN po.order_id END AS rpl_fit_order_id
+, CASE WHEN af.annotation_group = 'RFF' AND rp.detail_value = 'FIT' THEN rp.annotation_target_id END AS rpl_fit_booking_id
+, CASE WHEN af.annotation_group = 'RFF' AND rp.detail_value = 'FIT' THEN rp.group_id END AS rpl_fit_group_id
+, CASE WHEN af.annotation_group = 'RFF' AND rp.detail_value = 'FIT' THEN rp.replacement_style END AS rpl_fit_replacement_style
+, CASE WHEN af.annotation_group = 'QUALITY_ISSUE' THEN po.order_id END AS quality_order_id
+, CASE WHEN af.annotation_group = 'QUALITY_ISSUE' THEN po.style END AS quality_style
+, CASE WHEN af.annotation_group = 'QUALITY_ISSUE' THEN po.group_id END AS quality_group_id
+, CASE WHEN af.annotation_group = 'QUALITY_ISSUE' THEN po.reservation_booking_id END AS quality_booking_id
+, CASE WHEN af.annotation_group = 'QUALITY_ISSUE' AND rp.detail_value like '%QUALITY%' 
+THEN po.order_id END AS rpl_quality_order_id
+, CASE WHEN af.annotation_group = 'QUALITY_ISSUE' AND rp.detail_value like '%QUALITY%' 
+THEN rp.group_id END AS rpl_quality_group_id
+, CASE WHEN af.annotation_group = 'QUALITY_ISSUE' AND rp.detail_value like '%QUALITY%' 
+THEN rp.annotation_target_id END AS rpl_quality_booking_id
+, CASE WHEN af.annotation_group = 'QUALITY_ISSUE' AND rp.detail_value like '%QUALITY%' 
+THEN rp.replacement_style END AS rpl_quality_replacement_style
+, CASE WHEN af.annotation_group = 'SHIPPING' THEN po.order_id END AS delivery_order_id
+, CASE WHEN af.annotation_group = 'SHIPPING' THEN po.style END AS delivery_style
+, CASE WHEN af.annotation_group = 'SHIPPING' THEN po.group_id END AS delivery_group_id
+, CASE WHEN af.annotation_group = 'SHIPPING' THEN po.reservation_booking_id END AS delivery_reservation_booking_id
+, CASE WHEN af.annotation_group = 'SHIPPING' AND rp.detail_value in ('CARRIER_ISSUE','OPERATION_ISSUE') --CARRIER_ISSUE OR OPERATION_ISSUE
+THEN po.order_id END AS rpl_delivery_order_id
+, CASE WHEN af.annotation_group = 'SHIPPING' AND rp.detail_value in ('CARRIER_ISSUE','OPERATION_ISSUE') --CARRIER_ISSUE OR OPERATION_ISSUE
+THEN rp.group_id END AS rpl_delivery_group_id
+, CASE WHEN af.annotation_group = 'SHIPPING' AND rp.detail_value in ('CARRIER_ISSUE','OPERATION_ISSUE') --CARRIER_ISSUE OR OPERATION_ISSUE
+THEN rp.annotation_target_id END AS rpl_delivery_booking_id
+, CASE WHEN af.annotation_group = 'SHIPPING' AND rp.detail_value in ('CARRIER_ISSUE','OPERATION_ISSUE') --CARRIER_ISSUE OR OPERATION_ISSUE
+THEN rp.replacement_style END AS rpl_delivery_replacement_style
+, CASE WHEN po_category IS NOT NULL  THEN po.order_id END AS po_order_id
+, CASE WHEN po_category IS NOT NULL  THEN po.group_id END AS po_group_id
+, CASE WHEN po_category IS NOT NULL  THEN po.reservation_booking_id END AS po_booking_id
+, CASE WHEN po_category IS NOT NULL AND rp.detail_value LIKE '%PO%'   THEN rp.order_id END AS rpl_po_order_id
+, CASE WHEN po_category IS NOT NULL AND rp.detail_value LIKE '%PO%'   THEN rp.group_id END AS rpl_po_group_id
+, CASE WHEN po_category IS NOT NULL AND rp.detail_value LIKE '%PO%'   THEN rp.annotation_target_id END AS rpl_po_booking_id
+FROM analytics.ogr_po AS po 
+LEFT JOIN etl.yp_autumn_full as af
+ON po.reservation_booking_id = af.annotation_target_id
+LEFT JOIN replacement rp 
+ON rp.order_id = po.order_id
+WHERE order_type = 'CLASSIC'
+AND  po.merchandise_category = 'RENTAL'
+AND regexp_like(po.sku, '^SS\d+') = FALSE
+AND regexp_like(po.sku, '^XX\d+') = FALSE;
+
+
+
+select  dayofweek(rental_begin_date)-1
+, case when order_type IN ('CLASSIC','CLASSIC_POSH','STORE_PICKUP','STORE_PICKUP_WEB')
+then 'CLASSIC' ELSE order_type end as order_type
+, count(distinct replacement_booking_id)
+from rpt.v_ci_oi_resolution_report
+where oi_resolution_date between 
+DATEADD(day, -60, date_trunc('week', CURRENT_DATE::DATE))
+and current_date
+group by 1,2
+order by 2,1
+;
+select * from etl.uc_orders;
+
+
+/*What % of replacements are in the same style as the
+item with the issue?*/
+create or replace view rpt.v_order_issue_style as
+WITH replacement as
+(
+	SELECT  DISTINCT af.order_id
+	, ogr.group_id
+    , ogr.sku as replacement_sku
+    , p.style as replacement_style
+	, af.annotation_target_id
+	, af.detail_value
+	FROM etl.yp_autumn_full as af
+	INNER JOIN rtrbi.order_group_reservation ogr
+	ON af.annotation_target_id = ogr.reservation_booking_id
+  inner join analytics.barcode_sku_style_type p
+on ogr.sku = p.sku
+	where af.annotation_group = 'REPLACEMENT'
+	and af.detail_name = 'reason' )
+SELECT DISTINCT
+ po.order_id
+ ,po.uid
+, po.group_id
+, po.order_datetime_est
+, po.group_created_est
+, po.reservation_booking_id
+, po.reservation_created
+, po.email
+, po.TYPE
+, po.last_possible_begin_date
+, po.rental_begin_date
+, rp.order_id AS order_id_w_rplm
+, rp.detail_value
+, CASE WHEN af.annotation_group = 'RFF' THEN po.order_id END AS fit_order_id
+, CASE WHEN af.annotation_group = 'RFF' THEN po.style END AS fit_style
+, CASE WHEN af.annotation_group = 'RFF' THEN po.reservation_booking_id END AS fit_booking_id
+, CASE WHEN af.annotation_group = 'RFF' AND rp.detail_value = 'FIT' THEN po.order_id END AS rpl_fit_order_id
+, CASE WHEN af.annotation_group = 'RFF' AND rp.detail_value = 'FIT' THEN rp.annotation_target_id END AS rpl_fit_booking_id
+, CASE WHEN af.annotation_group = 'RFF' AND rp.detail_value = 'FIT' THEN rp.replacement_style END AS rpl_fit_replacement_style
+, CASE WHEN af.annotation_group = 'QUALITY_ISSUE' THEN po.order_id END AS quality_order_id
+, CASE WHEN af.annotation_group = 'QUALITY_ISSUE' THEN po.style END AS quality_style
+, CASE WHEN af.annotation_group = 'QUALITY_ISSUE' THEN po.reservation_booking_id END AS quality_booking_id
+, CASE WHEN af.annotation_group = 'QUALITY_ISSUE' AND rp.detail_value like '%QUALITY%' 
+THEN po.order_id END AS rpl_quality_order_id
+, CASE WHEN af.annotation_group = 'QUALITY_ISSUE' AND rp.detail_value like '%QUALITY%' 
+THEN rp.annotation_target_id END AS rpl_quality_booking_id
+, CASE WHEN af.annotation_group = 'QUALITY_ISSUE' AND rp.detail_value like '%QUALITY%' 
+THEN rp.replacement_style END AS rpl_quality_replacement_style
+, CASE WHEN af.annotation_group = 'SHIPPING' THEN po.order_id END AS delivery_order_id
+, CASE WHEN af.annotation_group = 'SHIPPING' THEN po.style END AS delivery_style
+, CASE WHEN af.annotation_group = 'SHIPPING' THEN po.reservation_booking_id END AS delivery_reservation_booking_id
+, CASE WHEN af.annotation_group = 'SHIPPING' AND rp.detail_value in ('CARRIER_ISSUE','OPERATION_ISSUE') --CARRIER_ISSUE OR OPERATION_ISSUE
+THEN po.order_id END AS rpl_delivery_order_id
+, CASE WHEN af.annotation_group = 'SHIPPING' AND rp.detail_value in ('CARRIER_ISSUE','OPERATION_ISSUE') --CARRIER_ISSUE OR OPERATION_ISSUE
+THEN rp.annotation_target_id END AS rpl_delivery_booking_id
+, CASE WHEN af.annotation_group = 'SHIPPING' AND rp.detail_value in ('CARRIER_ISSUE','OPERATION_ISSUE') --CARRIER_ISSUE OR OPERATION_ISSUE
+THEN rp.replacement_style END AS rpl_delivery_replacement_style
+/*, CASE WHEN po_category IS NOT NULL  THEN po.order_id END AS po_order_id
+, CASE WHEN po_category IS NOT NULL  THEN po.group_id END AS po_group_id
+, CASE WHEN po_category IS NOT NULL  THEN po.reservation_booking_id END AS po_booking_id
+, CASE WHEN po_category IS NOT NULL AND rp.detail_value LIKE '%PO%'   THEN rp.order_id END AS rpl_po_order_id
+, CASE WHEN po_category IS NOT NULL AND rp.detail_value LIKE '%PO%'   THEN rp.group_id END AS rpl_po_group_id
+, CASE WHEN po_category IS NOT NULL AND rp.detail_value LIKE '%PO%'   THEN rp.reservation_booking_id END AS rpl_po_booking_id
+*/
+FROM analytics.ogr_po AS po 
+LEFT JOIN etl.yp_autumn_full as af
+ON po.reservation_booking_id = af.annotation_target_id
+LEFT JOIN replacement rp 
+ON rp.order_id = po.order_id
+WHERE order_type = 'CLASSIC'
+AND  po.merchandise_category = 'RENTAL'
+AND regexp_like(po.sku, '^SS\d+') = FALSE
+AND regexp_like(po.sku, '^XX\d+') = FALSE;
+
+select  count(distinct case when fit_style is not null and rpl_fit_replacement_style is not null
+then rpl_fit_booking_id end) as fit_total_rpl
+,count(distinct case when fit_style = rpl_fit_replacement_style and rpl_fit_replacement_style is not null
+then rpl_fit_booking_id end) as fit_same_style_rpl
+, count(distinct case when quality_style is not null and rpl_quality_replacement_style is not null
+then rpl_quality_booking_id end) as quality_total_rpl
+,count(distinct case when quality_style = rpl_quality_replacement_style and rpl_quality_replacement_style is not null
+then rpl_quality_booking_id end) as quality_same_style_rpl
+, count(distinct case when delivery_style is not null and rpl_delivery_replacement_style is not null
+then rpl_delivery_booking_id end) as delivery_total_rpl
+,count(distinct case when delivery_style = rpl_delivery_replacement_style and rpl_delivery_replacement_style is not null
+then rpl_fit_booking_id end) as delivery_same_style_rpl
+from rpt.v_order_issue_style
+where rental_begin_date between 
+DATEADD(day, -60, date_trunc('week', CURRENT_DATE::DATE))
+and current_date
+;
+
+select * from rpt.v_order_issue_style
+where delivery_reservation_booking_id is not null
+and rental_begin_date between 
+DATEADD(day, -180, date_trunc('week', CURRENT_DATE::DATE))
+and current_date;
+select dayofweek(CURRENT_TIMESTAMP);
