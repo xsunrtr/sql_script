@@ -71,11 +71,8 @@ from ( select fli.order_id
         inner join etl.invoice_order as io
         on io.id = fli.invoice_id
         inner join etl.uc_orders as uco
-        on uco.order_id = fli.order_id /*and
-           to_timestamptz(uco.created) between (fli.created_at at time zone 'US/CENTRAL' at time zone 'UTC') - interval '100 seconds'
-                              and (fli.created_at at time zone 'US/CENTRAL' at time zone 'UTC')  + interval '100 seconds'
-        */where fsh.to_status = 'CONFIRMED'
-        --  and uco.created::date > '2015-10-01'
+        on uco.order_id = fli.order_id 
+        where fsh.to_status = 'CONFIRMED'
           and io.seq = 0
         group by 1) step0
   inner join     (
@@ -83,8 +80,7 @@ from ( select fli.order_id
 	 , uco.order_type
 	 , dt.fiscal_week_start
          , dt.fiscal_month_start
-	 , rog.rental_begin_date
-	 , sum(case when fli.direction='OUT' then 0-fli.subtotal else fli.subtotal end) as fli_amount
+	 , sum(case when fli.direction='OUT' then 0-fli.total else fli.total end) as fli_amount
 from etl.financial_line_item as fli
 inner join etl.fli_status_history as fsh
 on fli.id = fsh.fli_id
@@ -97,8 +93,9 @@ on uco.order_id = fli.order_id
 where fsh.to_status = 'CONFIRMED'
   and dt.fiscal_year >= 2015
   and uco.primary_email not like '%renttherunway.com'
-group by 1,2,3,4,5) as total 
+group by 1,2,3,4) as total 
 on total.order_id = step0.order_id;
+
 
 SELECT * FROM rpt.v_refund_order;
 
